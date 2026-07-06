@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from loguru import logger
 
 from config import settings
@@ -13,6 +14,7 @@ from monitor.api import router as monitor_router
 from monitor.dashboard_api import router as dashboard_router
 from monitor.monitor import pipeline_monitor
 from arxiv.api import router as arxiv_router
+from eval.api import router as eval_router
 
 
 @asynccontextmanager
@@ -34,7 +36,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="ARIA — Adaptive RAG Intelligence & Auditing System",
     description="A self-healing RAG pipeline for AI research papers with hallucination auditing, anomaly detection, and automated remediation.",
-    version="0.7.0",
+    version="0.9.0",
     lifespan=lifespan,
 )
 
@@ -50,6 +52,12 @@ app.include_router(query_router)
 app.include_router(monitor_router)
 app.include_router(dashboard_router)
 app.include_router(arxiv_router)
+app.include_router(eval_router)
+
+
+@app.get("/dashboard", tags=["System"], include_in_schema=False)
+async def serve_dashboard():
+    return FileResponse("dashboard.html")
 
 
 @app.get("/health", tags=["System"])
@@ -58,10 +66,11 @@ async def health():
     return {
         "status": "ok",
         "app": settings.app_name,
-        "version": "0.7.0",
+        "version": "0.9.0",
         "embedding_model": settings.embedding_model,
         "llm": settings.groq_model,
         "qdrant": qdrant_info,
+        "dashboard": "http://localhost:8000/dashboard",
     }
 
 

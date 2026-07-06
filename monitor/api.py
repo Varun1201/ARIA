@@ -9,6 +9,7 @@ from storage.postgres_client import get_db, PipelineAnomaly, QueryLog, Document
 from monitor.monitor import pipeline_monitor
 from monitor.root_cause import root_cause_analyzer
 from monitor.remediation import remediation_engine, HIGH_RISK_ACTIONS
+from monitor.reingestion import reingestion_engine
 
 router = APIRouter(prefix="/monitor", tags=["Monitor"])
 
@@ -256,6 +257,7 @@ async def approve_remediation(
 
     logger.info(f"Human approved remediation '{action}' for anomaly {anomaly_id}")
 
+    # Step 1: Execute the approved remediation action
     remediation_result = await remediation_engine.execute(
         anomaly_id=anomaly_id,
         action=action,
@@ -264,13 +266,22 @@ async def approve_remediation(
     )
 
     anomaly.remediation_status = "approved"
-    anomaly.resolved_at = datetime.utcnow()
     await db.commit()
+
+    # Step 2: Close the healing loop — re-ingest all pending + failed documents
+    logger.info(f"Triggering re-ingestion cycle for anomaly {anomaly_id}")
+    reingestion_result = await reingestion_engine.run(anomaly_id=anomaly_id)
 
     return {
         "anomaly_id": anomaly_id,
         "action": action,
-        "result": remediation_result,
+        "remediation": remediation_result,
+        "reingestion": reingestion_result,
+        "message": (
+            f"Healing loop complete — "
+            f"re-ingested {reingestion_result.get('results', {}).get('indexed', 0)} documents. "
+            f"Health improved: {reingestion_result.get('health_improved', False)}"
+        ),
     }
 
 
